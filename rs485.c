@@ -9,7 +9,10 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
+#include "raspi_gpio.h"
 #include "rs485.h"
+
+pthread_t tRS485Id;
 
 int rs485_fd = -1;
 int rs485_finish = 0;
@@ -17,13 +20,15 @@ struct termios oldtty;
 int rs485flag = TIOCM_RTS;
 int bSoftRTS=0;
 int bInvertRTS=0;
+int bPinNum=0;
 
-int rs485_open(int SoftRTS, int InvertRTS)
+int rs485_open(int SoftRTS, int InvertRTS, int PinNum)
 {
 
     char *portname = RS485_PORT;
     bSoftRTS = SoftRTS;
     bInvertRTS = InvertRTS;
+    bPinNum = PinNum;
 
     rs485_fd = open (portname, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (rs485_fd < 0)
@@ -62,12 +67,20 @@ int rs485_open(int SoftRTS, int InvertRTS)
 
     tcflush(rs485_fd,TCIOFLUSH);
 
-    if(bSoftRTS)
+    switch(bSoftRTS)
     {
-        if(bInvertRTS)
-            ioctl(rs485_fd, TIOCMBIS, &rs485flag);
-        else
-            ioctl(rs485_fd, TIOCMBIC, &rs485flag);
+        case SOFTWARE_RTS:
+            if(bInvertRTS)
+                ioctl(rs485_fd, TIOCMBIS, &rs485flag);
+            else
+                ioctl(rs485_fd, TIOCMBIC, &rs485flag);
+            break;
+        case SOFTWARE_GPIO:
+            GPIOExport(bPinNum);
+            usleep(50000); //wait until create the node.
+            GPIODirection(bPinNum, OUT);
+            GPIOWrite(bPinNum, LOW); //READ Mode
+            break;
     }
 
 
@@ -76,6 +89,11 @@ int rs485_open(int SoftRTS, int InvertRTS)
 
 void rs485_close()
 {
+    if(bSoftRTS == SOFTWARE_GPIO)
+    {
+        GPIOUnexport(bPinNum);
+    }
+
     tcsetattr (rs485_fd, TCSANOW, &oldtty);
     close(rs485_fd);
 }
@@ -88,12 +106,17 @@ int rs485_write(char *buf, int len)
         printf("%s port is not opened\n", RS485_PORT);
         return -1;
     }
-    if(bSoftRTS)
+    switch(bSoftRTS)
     {
-        if(bInvertRTS)
-            ioctl(rs485_fd, TIOCMBIC, &rs485flag);
-        else
-            ioctl(rs485_fd, TIOCMBIS, &rs485flag);
+        case SOFTWARE_RTS:
+            if(bInvertRTS)
+                ioctl(rs485_fd, TIOCMBIC, &rs485flag);
+            else
+                ioctl(rs485_fd, TIOCMBIS, &rs485flag);
+            break;
+        case SOFTWARE_GPIO:
+            GPIOWrite(bPinNum, HIGH); //Write Mode
+            break;
     }
     nRet = write(rs485_fd, buf, len);
 
@@ -104,11 +127,18 @@ int rs485_write(char *buf, int len)
             ioctl(rs485_fd, TIOCSERGETLSR, &txempty);
             if(txempty) break;
         }
-
-        if(bInvertRTS)
-            ioctl(rs485_fd, TIOCMBIS, &rs485flag);
-        else
-            ioctl(rs485_fd, TIOCMBIC, &rs485flag);
+        switch(bSoftRTS)
+        {
+            case SOFTWARE_RTS:
+                if(bInvertRTS)
+                    ioctl(rs485_fd, TIOCMBIS, &rs485flag);
+                else
+                    ioctl(rs485_fd, TIOCMBIC, &rs485flag);
+                break;
+            case SOFTWARE_GPIO:
+                GPIOWrite(bPinNum, LOW); //Read Mode
+                break;
+        }
     }
 
     return nRet;
@@ -141,19 +171,20 @@ void rs485_receive()
     rs485_close();
 }
 
-void init_rs485(int SoftRTS, int InvertRTS)
+void init_rs485(int SoftRTS, int InvertRTS, int PinNum)
 {
-  pthread_t tRS485Id;
-  rs485_finish = 0;
-  if(rs485_open(SoftRTS, InvertRTS) < 0)
-  {
+    rs485_finish = 0;
+    if(rs485_open(SoftRTS, InvertRTS, PinNum) < 0)
+    {
       return ;
-  }
-  pthread_create(&tRS485Id, NULL,(void *)&rs485_receive, NULL);
+    }
+    pthread_create(&tRS485Id, NULL,(void *)&rs485_receive, NULL);
 }
 
 
 void finish_rs485()
 {
-  rs485_finish=1;
+    int status;
+    rs485_finish=1;
+    pthread_join(tRS485Id, (void**)&status);
 }

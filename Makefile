@@ -1,7 +1,8 @@
 INC= -I ./include/
 
-OBJ = rs485.o \
-	  rs485_example.o \
+OBJ = raspi_gpio.o \
+	  rs485.o \
+	  rs485_example.o
 
 
 TARGET = rs485_exam

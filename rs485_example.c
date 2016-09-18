@@ -11,21 +11,34 @@ int main(int argc, char *argv[])
     if(argc < 3)
     {
         printf("rs485_exam [SWRTS] [INVERT]\n");
-        printf("[SWRTS]  0 : Hardware RTS, 1 : Software RTS\n");
-        printf("[INVERT] 0 : Not Invert, 1 : Invert\n");
+        printf("[SWRTS]  0 : Hardware RTS, 1 : Software RTS, 2 : Software GPIO\n");
+        printf("[OPTION] When SWRTS is 1, 0 : Not Invert, 1 : Invert\n");
+        printf("[OPTION] When SWRTS is 2, PIN NUMBER for DE/RE\n");
         printf("\t INVERT Option is SoftwareRTS Mode Only\n");
         printf("\t when is Hardware RTS mode, you should set to 0\n");
         printf("EX>\n");
         printf("\trs485_exam 0 0 : Hardware RTS, Nothing\n");
         printf("\trs485_exam 1 0 : Software RTS, Not Invert\n");
         printf("\trs485_exam 1 1 : Software RTS, Invert\n");
+        printf("\trs485_exam 2 17: Software GPIO, Pin 17\n");
         return -1;
     }
     int sw = atoi(argv[1]);
-    int invert = atoi(argv[2]);
+    int option = atoi(argv[2]);
 
-    printf("%d %d\n",sw, invert);
-    init_rs485(sw, invert);
+    printf("%d %d\n",sw, option);
+    switch(sw)
+    {
+        case 0:
+            init_rs485(sw, 0, 0);
+            break;
+        case 1:
+            init_rs485(sw, option, 0);
+        break;
+        case 2:
+            init_rs485(sw, 0, option);
+            break;
+    }
 
     //create the dummy data
     for(i=0;i<10;i++)
